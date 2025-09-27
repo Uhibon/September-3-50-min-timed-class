@@ -12,7 +12,8 @@
       margin:0;
       font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Helvetica,Arial,sans-serif;
       color:var(--ink);
-      background:url('Booha card.jpg') center/cover fixed no-repeat;
+      /* 🔧 Rename your file to booha-card.jpg (no space) or URL-encode spaces */
+      background:url('booha-card.jpg') center/cover fixed no-repeat;
     }
     .wrap{max-width:900px;margin:0 auto;padding:16px 16px 24px;}
     header{
@@ -39,7 +40,7 @@
     .pill{border:1px solid #ccc;border-radius:999px;padding:6px 10px;font-size:12px;background:rgba(255,255,255,0.7)}
     .card{
       user-select:none;-webkit-user-select:none;display:flex;flex-direction:column;justify-content:center;align-items:center;
-      text-align:center;background:url('Booha card.jpg') center/cover no-repeat;
+      text-align:center;background:url('booha-card.jpg') center/cover no-repeat;
       border:1px solid #ccc;border-radius:24px;min-height:56vh;margin:16px auto;padding:22px 18px 28px;
       box-shadow:0 10px 40px rgba(0,0,0,.25); position:relative;
     }
@@ -67,9 +68,6 @@
     }
     .progress{height:8px;border-radius:999px;background:#eee;overflow:hidden}
     .progress>span{display:block;height:100%;background:linear-gradient(90deg,#7dd3fc,#60a5fa,#a78bfa,#f472b6);width:0%}
-    .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-    @media (max-width:700px){.grid{grid-template-columns:repeat(2,minmax(0,1fr));} .main{font-size:24px}}
-    a{color:#0b78ff;text-decoration:none}
     .hidden{display:none}
     .options{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:12px}
     .optbtn{border:1px solid #ccc;border-radius:12px;padding:10px 14px;background:rgba(255,255,255,0.95);cursor:pointer}
@@ -172,7 +170,7 @@
       { cloze:'Students ___ to the teacher.', answers:['listen'], ja:'生徒たちは先生の話を聞きます。', hira:'せいとたちは せんせいの はなしを ききます。', full:'Students listen to the teacher.' }
     ];
 
-    // -------------- State --------------
+    // -------------- State & Elements --------------
     let deck = [];
     let index = 0;
     let showingFront = true;
@@ -193,13 +191,12 @@
       mcArea: document.getElementById('mcArea'),
     };
 
+    // -------------- Helpers --------------
     function shuffle(arr){
       for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]]}
       return arr;
     }
-
     const ALL_QUIZ_WORDS = Array.from(new Set(QUIZ.flatMap(q => q.answers.map(a=>a.toLowerCase()))));
-
     function mcOptionsFor(item, n=4){
       const corrects = item.answers.map(a=>a.toLowerCase());
       const pool = ALL_QUIZ_WORDS.filter(v => !corrects.includes(v));
@@ -207,61 +204,189 @@
       return shuffle([corrects[0], ...pool.slice(0,n-1)]);
     }
 
+    // -------------- Build Decks --------------
     function buildDeck(){
       const mode = els.mode.value;
-      if(mode==='quiz'){
+
+      if(mode==='vocab-j2e' || mode==='vocab-e2j'){
+        const combined = [...PEOPLE, ...ROLES];
+        deck = combined.map(x=>({
+          type:'vocab',
+          front: mode==='vocab-j2e' ? x.ja : x.en,
+          back:  mode==='vocab-j2e' ? x.en : x.ja,
+          hira: x.hira,
+          sideLabelFront: mode==='vocab-j2e' ? 'Japanese → English' : 'English → Japanese',
+          sideLabelBack:  mode==='vocab-j2e' ? 'English' : 'Japanese',
+        }));
+      } else if(mode==='sentences'){
+        deck = SENTENCES.map(s=>({
+          type:'sentence',
+          front: s.ja,
+          back: s.en + '\n' + s.ja,   // EN + JA on back
+          hira: s.hira,
+          sideLabelFront: 'Japanese sentence',
+          sideLabelBack: 'Answer (EN + JA)',
+        }));
+      } else if(mode==='qa'){
+        deck = QA.map(q=>({
+          type:'qa',
+          front: q.q_ja,
+          back: q.a_en + '\n' + q.a_ja, // EN + JA
+          hira: q.q_hira + '\n' + q.a_hira,
+          sideLabelFront: 'Question (JA)',
+          sideLabelBack: 'Answer (EN + JA)',
+        }));
+      } else if(mode==='quiz'){
         deck = QUIZ.map(q=>({
           type:'quiz',
-          front:q.cloze,
-          back:q.full+'\\n'+q.ja,
-          hira:q.hira,
-          answers:q.answers,
-          choices:mcOptionsFor(q,4),
-          sideLabelFront:'Choose the missing word',
-          sideLabelBack:'Answer'
+          front: q.cloze,
+          back: q.full + '\n' + q.ja,
+          hira: q.hira,
+          answers: q.answers,
+          choices: mcOptionsFor(q, 4),
+          sideLabelFront: 'Choose the missing word',
+          sideLabelBack: 'Answer (EN + JA)',
         }));
       } else {
-        deck = PEOPLE;
+        deck = [];
       }
-      index=0; showingFront=true; render();
+
+      index = 0; showingFront = true; render();
     }
 
+    // -------------- Render --------------
     function render(){
-      if(deck.length===0){els.main.textContent='—'; return;}
-      const item=deck[index];
-      els.label.textContent=showingFront?item.sideLabelFront:item.sideLabelBack;
-      els.main.textContent=showingFront?item.front:item.back;
-      els.hira.textContent=showingFront?item.hira:'';
+      if(deck.length===0){
+        els.label.textContent = 'No cards';
+        els.main.textContent = '—';
+        els.sub.textContent = 'Choose a mode';
+        els.hira.classList.add('hidden');
+        els.mcArea.classList.add('hidden');
+        els.mcArea.innerHTML = '';
+        updateCounter();
+        return;
+      }
 
-      if(item.type==='quiz' && showingFront){
+      const item = deck[index];
+      const mode = els.mode.value;
+      els.label.textContent = showingFront ? item.sideLabelFront : item.sideLabelBack;
+
+      const content = showingFront ? item.front : item.back;
+
+      // If back contains EN + JA lines, format nicely
+      if(!showingFront && typeof content === 'string' && content.includes('\n')){
+        const [en, ja] = content.split('\n');
+        els.main.innerHTML = `<div style="font-size:22px;font-weight:700">${en}</div><div class="sub" style="margin-top:8px">${ja}</div>`;
+      } else {
+        els.main.textContent = content;
+      }
+
+      // Hira visibility
+      if(showingFront){
+        if(item.type==='vocab' && els.mode.value==='vocab-j2e' || item.type==='sentence' || item.type==='qa'){
+          if(item.hira){
+            els.hira.classList.remove('hidden');
+            if(item.type==='qa' && item.hira.includes('\n')){
+              els.hira.textContent = item.hira.split('\n')[0];
+            } else {
+              els.hira.textContent = item.hira;
+            }
+          } else { els.hira.classList.add('hidden'); els.hira.textContent=''; }
+        } else { els.hira.classList.add('hidden'); els.hira.textContent=''; }
+      } else {
+        if(item.type==='qa' && item.hira && item.hira.includes('\n')){
+          els.hira.classList.remove('hidden');
+          els.hira.textContent = item.hira.split('\n')[1] || '';
+        } else if(item.hira){ els.hira.classList.remove('hidden'); els.hira.textContent=item.hira; }
+        else { els.hira.classList.add('hidden'); els.hira.textContent=''; }
+      }
+
+      // Multiple-choice area only on quiz front
+      if(mode==='quiz' && item.type==='quiz' && showingFront){
+        els.sub.textContent = 'Choose the correct word.';
         els.mcArea.classList.remove('hidden');
-        els.mcArea.innerHTML='';
+        els.mcArea.innerHTML = '';
         item.choices.forEach(opt=>{
           const btn=document.createElement('button');
           btn.className='optbtn';
           btn.textContent=opt;
-          btn.addEventListener('click',e=>{
-            e.preventDefault();
-            const norm=s=>s.toLowerCase().trim();
-            const isCorrect=item.answers.map(a=>norm(a)).includes(norm(opt));
+          btn.addEventListener('click', (e)=>{
+            e.preventDefault(); e.stopPropagation();
+            const norm = s=>s.toLowerCase().trim();
+            const isCorrect = item.answers.map(a=>norm(a)).includes(norm(opt));
             if(isCorrect){
               btn.classList.add('ok');
               [...els.mcArea.querySelectorAll('button')].forEach(b=>b.disabled=true);
-              setTimeout(()=>{showingFront=false;render();},350);
+              setTimeout(()=>{ showingFront=false; render(); }, 350);
             } else {
               btn.classList.add('bad');
-              btn.disabled=true;
+              btn.disabled = true;
             }
-          });
+          }, {passive:false});
           els.mcArea.appendChild(btn);
         });
       } else {
         els.mcArea.classList.add('hidden');
-        els.mcArea.innerHTML='';
+        els.mcArea.innerHTML = '';
+        els.sub.textContent = 'Tap / Space to flip · Swipe / ← → to navigate';
       }
+
+      updateCounter();
+      setHash();
     }
 
-    buildDeck();
+    function updateCounter(){
+      const total = deck.length || 0;
+      const cur = total ? (index+1) : 0;
+      document.getElementById('counter').textContent = `${cur} / ${total}`;
+      document.getElementById('bar').style.width = total ? `${(cur/total)*100}%` : '0%';
+    }
+
+    // -------------- Navigation --------------
+    function prev(){ index = (index-1+deck.length)%deck.length; showingFront=true; render(); }
+    function next(){ index = (index+1)%deck.length; showingFront=true; render(); }
+    function flip(){ showingFront = !showingFront; render(); }
+    function shuffleDeck(){ deck = shuffle(deck); index=0; showingFront=true; render(); }
+
+    // -------------- URL Hash (deep-linking) --------------
+    function setHash(){ location.hash = `#${els.mode.value}:${index}`; }
+    function readHash(){
+      const h = location.hash.replace('#','');
+      if(!h) return;
+      const [m, i] = h.split(':');
+      if(m && [...els.mode.options].some(o=>o.value===m)) els.mode.value = m;
+      // build before clamping index (needs deck length)
+      buildDeck();
+      if(i && !Number.isNaN(+i)){ index = Math.max(0, Math.min(deck.length-1, +i)); showingFront=true; render(); }
+    }
+
+    // -------------- Wire up events --------------
+    els.mode.addEventListener('change', buildDeck);
+    document.getElementById('btnPrev').addEventListener('click', prev);
+    document.getElementById('btnNext').addEventListener('click', next);
+    document.getElementById('btnFlip').addEventListener('click', flip);
+    document.getElementById('btnShuffle').addEventListener('click', shuffleDeck);
+
+    // Keyboard
+    window.addEventListener('keydown', (e)=>{
+      if(e.code==='ArrowLeft'){ e.preventDefault(); prev(); }
+      else if(e.code==='ArrowRight'){ e.preventDefault(); next(); }
+      else if(e.code==='Space'){ e.preventDefault(); flip(); }
+      else if(e.key==='S' || e.key==='s'){ e.preventDefault(); shuffleDeck(); }
+      else if(e.key==='1' && els.mode.value==='quiz'){ const b=els.mcArea.querySelectorAll('button')[0]; if(b) b.click(); }
+      else if(e.key==='2' && els.mode.value==='quiz'){ const b=els.mcArea.querySelectorAll('button')[1]; if(b) b.click(); }
+      else if(e.key==='3' && els.mode.value==='quiz'){ const b=els.mcArea.querySelectorAll('button')[2]; if(b) b.click(); }
+      else if(e.key==='4' && els.mode.value==='quiz'){ const b=els.mcArea.querySelectorAll('button')[3]; if(b) b.click(); }
+    });
+
+    // Click to flip (disabled on quiz front)
+    document.getElementById('card').addEventListener('click', (e)=>{
+      if(els.mode.value==='quiz' && showingFront) return;
+      flip();
+    }, { passive:true });
+
+    // Init
+    if(location.hash){ readHash(); } else { buildDeck(); }
   </script>
 </body>
 </html>
